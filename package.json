@@ -8,7 +8,7 @@
     "dev": "nodemon server.js",
     "build": "npm install --prefix weather-dashboard && npm run build --prefix weather-dashboard"
   },
-,
+
   "keywords": [
     "agriculture",
     "bidding",
