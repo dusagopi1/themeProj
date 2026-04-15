@@ -6,6 +6,15 @@ const bidTemplate = document.getElementById('bid-template');
 const chatsContainer = document.getElementById('chats-container');
 const chatTemplate = document.getElementById('chat-template');
 
+// Analytics DOM elements
+const totalSpentElement = document.getElementById('total-spent');
+const productsBoughtElement = document.getElementById('products-bought');
+const activeBidsElement = document.getElementById('active-bids');
+const bidsWonElement = document.getElementById('bids-won');
+const avgPurchaseElement = document.getElementById('avg-purchase');
+const totalQtyBoughtElement = document.getElementById('total-qty-bought');
+const winRateElement = document.getElementById('win-rate');
+
 // Check auth state
 auth.onAuthStateChanged(user => {
     if (user) {
@@ -23,9 +32,10 @@ auth.onAuthStateChanged(user => {
                     // Display user name
                     userNameElement.textContent = userData.name;
                     
-                    // Load winning bids and active chats
+                    // Load winning bids, active chats, and analytics
                     loadWinningBids(user.uid);
                     loadActiveChats(user.uid);
+                    loadWholesalerAnalytics(user.uid);
                 } else {
                     console.error('User document not found');
                     auth.signOut();
@@ -291,5 +301,92 @@ function formatTimeAgo(date) {
             month: 'short',
             day: 'numeric'
         });
+    }
+}
+
+// Load wholesaler analytics
+function loadWholesalerAnalytics(wholesalerId) {
+    // Initialize analytics values
+    let totalSpent = 0;
+    let productsBought = 0;
+    let activeBids = 0;
+    let bidsWon = 0;
+    let totalBids = 0;
+    let totalQuantityBought = 0;
+
+    // Get products purchased by this wholesaler
+    db.collection('products')
+        .where('soldTo', '==', wholesalerId)
+        .get()
+        .then(snapshot => {
+            snapshot.forEach(doc => {
+                const product = doc.data();
+                productsBought++;
+                totalSpent += product.winningBid || product.currentBid || product.minimumBid || 0;
+                
+                // Calculate quantity bought
+                const qty = parseFloat(product.quantity) || 0;
+                totalQuantityBought += qty;
+            });
+
+            // Get all bids by this wholesaler
+            return db.collection('bids')
+                .where('wholesalerId', '==', wholesalerId)
+                .get();
+        })
+        .then(bidsSnapshot => {
+            bidsSnapshot.forEach(doc => {
+                const bid = doc.data();
+                totalBids++;
+                
+                if (bid.status === 'pending') {
+                    activeBids++;
+                } else if (bid.status === 'accepted' || bid.status === 'won') {
+                    bidsWon++;
+                }
+            });
+            
+            // Update UI with analytics
+            updateWholesalerAnalyticsUI(totalSpent, productsBought, activeBids, bidsWon, totalBids, totalQuantityBought);
+        })
+        .catch(err => {
+            console.error('Error loading analytics:', err);
+        });
+}
+
+// Update wholesaler analytics UI
+function updateWholesalerAnalyticsUI(spent, bought, active, won, totalBids, quantity) {
+    // Format amount with Indian number format
+    if (totalSpentElement) {
+        totalSpentElement.textContent = `₹${spent.toLocaleString('en-IN')}`;
+    }
+    
+    if (productsBoughtElement) {
+        productsBoughtElement.textContent = bought;
+    }
+    
+    if (activeBidsElement) {
+        activeBidsElement.textContent = active;
+    }
+    
+    if (bidsWonElement) {
+        bidsWonElement.textContent = won;
+    }
+    
+    // Calculate and display average purchase
+    if (avgPurchaseElement) {
+        const avgPurchase = bought > 0 ? Math.round(spent / bought) : 0;
+        avgPurchaseElement.textContent = `₹${avgPurchase.toLocaleString('en-IN')}`;
+    }
+    
+    // Display total quantity bought
+    if (totalQtyBoughtElement) {
+        totalQtyBoughtElement.textContent = `${quantity} kg`;
+    }
+    
+    // Calculate and display win rate
+    if (winRateElement) {
+        const rate = totalBids > 0 ? Math.round((won / totalBids) * 100) : 0;
+        winRateElement.textContent = `${rate}%`;
     }
 }

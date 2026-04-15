@@ -1,0 +1,45 @@
+<!DOCTYPE html>
+<html>
+<!-- <head> -->
+  <body>
+
+    <form onsubmit="return validate()">
+      <label >name:</label>
+      <input style="display: block;"  type="text" id="name" placeholder="ENTER NAME">
+<label >email:</label>
+      <input style="display: block;"  type="text" id="mail" placeholder="ENTER mail">
+<label >pass:</label>
+      <input style="display: block;"  type="text" id="pass" placeholder="ENTER pass">
+  <button id="sub">submit</button>
+    </form>
+      <script>
+        function validate(){
+          let n=document.getElementById("name").value;
+          let e=document.getElementById("mail").value;
+          let p=document.getElementById("pass").value;
+          let no=document.getElementById("name").value;
+        if (!/^[A-Z][a-zA-Z\s]*$/.test(n)) 
+        {
+          alert("enter val name");
+          return false;
+        }  else if(!/^[a-zA-Z0-9.]+@[a-z]+\.[a-z]{2,}$/.test(e))
+
+
+        {
+          alert("enter val mail");
+          return false;
+        } 
+         else if(!/^(?=.*[0-9)(?=.*[!@#$%^&*])[a-zA-Z]{6,}$/.test(p))
+        {
+          alert("enter val pass");
+          return false;
+        }
+        else{
+          document.write("success");
+          return true;
+        }
+        }
+      </script>
+    
+</body>
+</html>

@@ -4,10 +4,10 @@
   "description": "Platform connecting farmers and wholesalers through a bidding system",
   "main": "server.js",
   "scripts": {
-  "start": "node server.js",
-  "dev": "nodemon server.js",
-  "build": "echo \"No build step required for backend\""
-}
+    "start": "node server.js",
+    "dev": "nodemon server.js",
+    "build": "npm install --prefix weather-dashboard && npm run build --prefix weather-dashboard"
+  },
 ,
   "keywords": [
     "agriculture",

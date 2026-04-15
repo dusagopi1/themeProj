@@ -6,6 +6,15 @@ const productTemplate = document.getElementById('product-template');
 const chatsContainer = document.getElementById('chats-container');
 const chatTemplate = document.getElementById('chat-template');
 
+// Analytics DOM elements
+const totalRevenueElement = document.getElementById('total-revenue');
+const productsSoldElement = document.getElementById('products-sold');
+const activeListingsElement = document.getElementById('active-listings');
+const totalBidsElement = document.getElementById('total-bids');
+const avgSalePriceElement = document.getElementById('avg-sale-price');
+const totalQuantityElement = document.getElementById('total-quantity');
+const conversionRateElement = document.getElementById('conversion-rate');
+
 // Check auth state
 auth.onAuthStateChanged(user => {
     if (user) {
@@ -23,9 +32,10 @@ auth.onAuthStateChanged(user => {
                     // Display user name
                     userNameElement.textContent = userData.name;
                     
-                    // Load farmer's products and chats
+                    // Load farmer's products, chats, and analytics
                     loadProducts(user.uid);
                     loadActiveChats(user.uid);
+                    loadFarmerAnalytics(user.uid);
                 } else {
                     console.error('User document not found');
                     auth.signOut();
@@ -340,4 +350,144 @@ function formatTimeAgo(date) {
             day: 'numeric'
         });
     }
+}
+
+// Load farmer analytics
+function loadFarmerAnalytics(farmerId) {
+    // Initialize analytics values
+    let totalRevenue = 0;
+    let productsSold = 0;
+    let activeListings = 0;
+    let totalBids = 0;
+    let totalQuantitySold = 0;
+    let totalProducts = 0;
+
+    // Get all products by this farmer
+    db.collection('products')
+        .where('farmerId', '==', farmerId)
+        .get()
+        .then(snapshot => {
+            const now = new Date();
+            
+            snapshot.forEach(doc => {
+                const product = doc.data();
+                totalProducts++;
+                
+                if (product.status === 'sold') {
+                    // Calculate revenue from sold products
+                    productsSold++;
+                    totalRevenue += product.winningBid || product.currentBid || product.minimumBid || 0;
+                    
+                    // Calculate quantity sold (extract number from quantity string)
+                    const qty = parseFloat(product.quantity) || 0;
+                    totalQuantitySold += qty;
+                } else {
+                    // Check if bidding is still active
+                    const startTime = product.biddingStartTime?.toDate();
+                    if (startTime) {
+                        const durationMs = (product.biddingDuration || 60) * 60 * 1000;
+                        const endTime = new Date(startTime.getTime() + durationMs);
+                        if (now < endTime) {
+                            activeListings++;
+                        }
+                    }
+                }
+            });
+
+            // Get total bids on farmer's products
+            return db.collection('bids')
+                .get();
+        })
+        .then(bidsSnapshot => {
+            // Count bids for this farmer's products
+            // First get list of farmer's product IDs
+            return db.collection('products')
+                .where('farmerId', '==', farmerId)
+                .get()
+                .then(productsSnapshot => {
+                    const farmerProductIds = productsSnapshot.docs.map(doc => doc.id);
+                    
+                    bidsSnapshot.forEach(doc => {
+                        const bid = doc.data();
+                        if (farmerProductIds.includes(bid.productId)) {
+                            totalBids++;
+                        }
+                    });
+                    
+                    // Update UI with analytics
+                    updateAnalyticsUI(totalRevenue, productsSold, activeListings, totalBids, totalQuantitySold, totalProducts);
+                });
+        })
+        .catch(err => {
+            console.error('Error loading analytics:', err);
+        });
+}
+
+// Update analytics UI
+function updateAnalyticsUI(revenue, sold, active, bids, quantity, total) {
+    // Format revenue with Indian number format
+    if (totalRevenueElement) {
+        totalRevenueElement.textContent = `₹${formatIndianCurrency(revenue)}`;
+    }
+    
+    if (productsSoldElement) {
+        productsSoldElement.textContent = sold;
+    }
+    
+    if (activeListingsElement) {
+        activeListingsElement.textContent = active;
+    }
+    
+    if (totalBidsElement) {
+        totalBidsElement.textContent = bids;
+    }
+    
+    // Calculate and display average sale price
+    if (avgSalePriceElement) {
+        const avgPrice = sold > 0 ? Math.round(revenue / sold) : 0;
+        avgSalePriceElement.textContent = `₹${formatIndianCurrency(avgPrice)}`;
+    }
+    
+    // Display total quantity sold
+    if (totalQuantityElement) {
+        totalQuantityElement.textContent = `${quantity} kg`;
+    }
+    
+    // Calculate and display conversion rate
+    if (conversionRateElement) {
+        const rate = total > 0 ? Math.round((sold / total) * 100) : 0;
+        conversionRateElement.textContent = `${rate}%`;
+    }
+}
+
+// Format number to Indian currency format (e.g., 1,00,000)
+function formatIndianCurrency(num) {
+    if (num === 0) return '0';
+    
+    const numStr = num.toString();
+    let result = '';
+    let count = 0;
+    
+    // Handle decimal part if any
+    const parts = numStr.split('.');
+    const intPart = parts[0];
+    const decPart = parts[1];
+    
+    for (let i = intPart.length - 1; i >= 0; i--) {
+        count++;
+        result = intPart[i] + result;
+        
+        if (count === 3 && i !== 0) {
+            result = ',' + result;
+            count = 0;
+        } else if (count === 2 && intPart.length > 3 && i !== 0 && intPart.length - i > 3) {
+            result = ',' + result;
+            count = 0;
+        }
+    }
+    
+    // Simple comma formatting for larger numbers
+    result = num.toLocaleString('en-IN');
+    
+    return result;
 }

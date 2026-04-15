@@ -5,9 +5,12 @@ const cors = require('cors');
 const fetch = require('node-fetch');
 const app = express();
 const PORT = process.env.PORT || 3000;
+const CROP_API_URL = process.env.CROP_API_URL || 'http://localhost:5000';
 
-// Gemini AI API key - In production, store this in environment variables
-const GEMINI_API_KEY = 'AIzaSyD2VN5yK6lfDcIFprRfPaN4s48z953e3qw'; // Replace with your actual Gemini API key
+// Gemini AI API key - store this in environment variables on Render
+const GEMINI_API_KEY = process.env.GEMINI_API_KEY || '';
+const AGMARKNET_API_KEY = process.env.AGMARKNET_API_KEY || '';
+const VISUAL_CROSSING_API_KEY = process.env.VITE_VISUAL_CROSSING_API_KEY || '';
 
 // Enable CORS for all routes
 app.use(cors());
@@ -17,6 +20,9 @@ app.use(express.json());
 
 // Serve static files from the 'public' directory
 app.use(express.static(path.join(__dirname, 'public')));
+
+// Serve the React weather dashboard from the same host at /weather
+app.use('/weather', express.static(path.join(__dirname, 'weather-dashboard', 'dist')));
 
 // Serve locations.json data
 app.get('/data/locations.json', (req, res) => {
@@ -34,6 +40,10 @@ app.post('/api/gemini-chat', async (req, res) => {
     
     // Prepare the API request to Gemini
     const geminiApiUrl = 'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent';
+
+    if (!GEMINI_API_KEY) {
+      return res.status(500).json({ error: 'GEMINI_API_KEY is not configured.' });
+    }
     
     const requestBody = {
       contents: [{
@@ -87,8 +97,10 @@ app.get('/api/agmarknet', (req, res) => {
   // Note: This is an example URL. You'll need to replace it with the actual API endpoint
   const baseUrl = 'https://api.data.gov.in/resource/9ef84268-d588-465a-a308-a864a43d0070';
   
-  // API Key - In production, this should be stored in an environment variable
-  const apiKey = '579b464db66ec23bdd000001a362811a786946525f70d6bd04f87244'; // Replace with your actual API key
+  if (!AGMARKNET_API_KEY) {
+    return res.status(500).json({ error: 'AGMARKNET_API_KEY is not configured.' });
+  }
+  const apiKey = AGMARKNET_API_KEY;
   
   // Build query parameters
   const params = new URLSearchParams({
@@ -243,6 +255,82 @@ app.get('/api/market-trends', (req, res) => {
     console.error('Error fetching trend data:', err);
     res.status(500).json({ error: 'Failed to fetch trend data' });
   });
+});
+
+// Weather data endpoint for crop prediction (proxies Visual Crossing API)
+app.get('/get-weather', async (req, res) => {
+  try {
+    const { lat, lon } = req.query;
+    
+    if (!lat || !lon) {
+      return res.status(400).json({ error: 'Latitude and longitude are required' });
+    }
+    
+    const apiKey = VISUAL_CROSSING_API_KEY;
+    if (!apiKey) {
+      return res.status(500).json({ error: 'VITE_VISUAL_CROSSING_API_KEY is not configured.' });
+    }
+    const weatherUrl = `https://weather.visualcrossing.com/VisualCrossingWebServices/rest/services/timeline/${lat},${lon}?key=${apiKey}&include=current,hours&elements=temperature,humidity&unitGroup=metric`;
+    
+    const response = await fetch(weatherUrl);
+    
+    if (!response.ok) {
+      return res.status(response.status).json({ error: 'Failed to fetch weather data' });
+    }
+    
+    const data = await response.json();
+    
+    // Extract temperature and humidity from current conditions
+    const currentConditions = data.currentConditions || {};
+    const firstHourData = (data.days && data.days[0] && data.days[0].hours && data.days[0].hours[0]) || {};
+    
+    res.json({
+      temperature: currentConditions.temp || firstHourData.temp || null,
+      humidity: currentConditions.humidity || firstHourData.humidity || null,
+      address: data.address,
+      timezone: data.timezone,
+      raw: data
+    });
+  } catch (error) {
+    console.error('Weather fetch error:', error);
+    res.status(500).json({ error: 'Failed to fetch weather data' });
+  }
+});
+
+// Crop recommendation API proxy for Render deployment
+app.all('/crop-api/*', async (req, res) => {
+  try {
+    const proxyPath = req.path.replace(/^\/crop-api/, '') || '/';
+    const queryString = new URLSearchParams(req.query).toString();
+    const url = `${CROP_API_URL}${proxyPath}${queryString ? `?${queryString}` : ''}`;
+
+    const response = await fetch(url, {
+      method: req.method,
+      headers: {
+        'Content-Type': 'application/json'
+      },
+      body: req.method === 'GET' || req.method === 'HEAD' ? undefined : JSON.stringify(req.body)
+    });
+
+    const contentType = response.headers.get('content-type') || 'application/json';
+    res.status(response.status).set('content-type', contentType);
+
+    if (contentType.includes('application/json')) {
+      const payload = await response.json();
+      return res.status(response.status).json(payload);
+    }
+
+    const text = await response.text();
+    return res.status(response.status).send(text);
+  } catch (error) {
+    console.error('Crop API proxy error:', error);
+    res.status(500).json({ error: 'Failed to proxy crop recommendation request' });
+  }
+});
+
+// Weather dashboard SPA fallback route
+app.get('/weather*', (req, res) => {
+  res.sendFile(path.join(__dirname, 'weather-dashboard', 'dist', 'index.html'));
 });
 
 // All other routes serve index.html for client-side routing

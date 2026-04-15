@@ -1,0 +1,28 @@
+services:
+  - type: web
+    name: kisan-connect-web
+    env: node
+    plan: free
+    rootDir: .
+    buildCommand: npm install && npm install --prefix weather-dashboard && npm run build --prefix weather-dashboard
+    startCommand: npm start
+    envVars:
+      - key: CROP_API_URL
+        value: https://kisan-connect-crop-api.onrender.com
+      - key: GEMINI_API_KEY
+        sync: false
+      - key: AGMARKNET_API_KEY
+        sync: false
+      - key: VITE_VISUAL_CROSSING_API_KEY
+        sync: false
+
+  - type: web
+    name: kisan-connect-crop-api
+    env: python
+    plan: free
+    rootDir: backend
+    buildCommand: pip install -r requirements.txt && python generate_model.py --dataset Crop_recommendation.csv
+    startCommand: gunicorn app:app --bind 0.0.0.0:$PORT
+    envVars:
+      - key: FLASK_DEBUG
+        value: "0"
